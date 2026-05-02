@@ -67,6 +67,7 @@ pytest tests/ -v
 Starts a local sshd on a random port with a throwaway keypair. Fully isolated — no system config read or modified, no root needed, works on macOS and Linux. See `tests/conftest.py` docstring for safety details.
 
 ### Manual password-bypass test
+ > WARNING: this does not work right now. It should be fixed in a future version.
 
 ```bash
 chmod +x examples/manual_password_test.sh
