@@ -206,6 +206,7 @@ def close(pf: _PfContext, host: str | None, close_all: bool, close_stale: bool):
     click.echo(f"Closed: {host}")
 
 
+# TODO(adriano): reap is untested manually
 @main.command()
 @click.pass_context
 def reap(ctx):
@@ -324,6 +325,7 @@ def _print_info_host(pf: _PfContext, host: str):
         click.echo("  pf reap")
 
 
+# TODO(adriano): forward is untested manually
 @main.command()
 @click.argument("host")
 @click.option("-pf", "--port-from", type=int, required=True, help="Local port.")
