@@ -3,7 +3,9 @@
 All subprocess calls to ssh live here so the CLI layer stays purely declarative.
 """
 
+import os
 import subprocess
+import time
 from dataclasses import dataclass
 from pathlib import Path
 from typing import NoReturn
@@ -38,6 +40,7 @@ class ResolvedHost:
     port: str
     sockets_dir: Path = _DEFAULT_SOCKETS_DIR
     config_path: Path | None = None
+    controlpersist: str | None = None
 
     @property
     def socket_path(self) -> Path:
@@ -69,6 +72,10 @@ def resolve_host(config_name: str, sockets_dir: Path = _DEFAULT_SOCKETS_DIR, con
         if len(parts) == 2:
             fields[parts[0].lower()] = parts[1]
 
+    cp = fields.get("controlpersist")
+    if cp in ("no", "0"):
+        cp = None
+
     return ResolvedHost(
         config_name=config_name,
         hostname=fields.get("hostname", config_name),
@@ -76,6 +83,7 @@ def resolve_host(config_name: str, sockets_dir: Path = _DEFAULT_SOCKETS_DIR, con
         port=fields.get("port", "22"),
         sockets_dir=sockets_dir,
         config_path=config_path,
+        controlpersist=cp,
     )
 
 
@@ -124,6 +132,51 @@ def add_forward(host: ResolvedHost, local_port: int, remote_port: int) -> None:
 def exec_command(host: ResolvedHost, remote_cmd: list[str], extra_ssh_args: list[str] | None = None) -> subprocess.CompletedProcess:
     cmd = host._ssh_base() + (extra_ssh_args or []) + [host.config_name] + remote_cmd
     return _run_ssh(cmd, _SSH_OPEN_TIMEOUT)
+
+
+# TODO(adrianoh): Security review (Claude): os.execvp with a list does not invoke a shell,
+# so no shell injection is possible. For arbitrary code execution it would require: (1) the
+# user choosing a malicious host arg (which resolves via their own ~/.ssh/config — they
+# control ProxyCommand/LocalCommand), or (2) a compromised ssh binary on PATH.
+def interactive_shell(host: ResolvedHost, extra_ssh_args: list[str] | None = None) -> NoReturn:
+    cmd = host._ssh_base() + (extra_ssh_args or []) + [host.config_name]
+    # TODO(adriano): investigate whether pf ssh has a real performance difference vs plain ssh
+    os.execvp("ssh", cmd)
+
+
+def socket_uptime(host: ResolvedHost) -> float | None:
+    """Seconds since the socket file was created, or None if it doesn't exist."""
+    if not host.socket_path.exists():
+        return None
+    return time.time() - host.socket_path.stat().st_birthtime
+
+
+def socket_clients(host: ResolvedHost) -> int | None:
+    """Count processes connected to the socket via lsof, or None on failure."""
+    try:
+        result = subprocess.run(
+            ["lsof", "-U", str(host.socket_path)],
+            capture_output=True, text=True, timeout=5,
+        )
+    except (subprocess.TimeoutExpired, FileNotFoundError):
+        return None
+    if result.returncode != 0:
+        return 0
+    lines = [l for l in result.stdout.splitlines()[1:] if l.strip()]
+    return len(lines)
+
+
+def format_duration(seconds: float) -> str:
+    s = int(seconds)
+    if s < 60:
+        return f"{s}s"
+    if s < 3600:
+        return f"{s // 60}m"
+    h, m = divmod(s, 3600)
+    m //= 60
+    if m == 0:
+        return f"{h}h"
+    return f"{h}h{m}m"
 
 
 def discover_sockets(sockets_dir: Path = _DEFAULT_SOCKETS_DIR) -> list[tuple[ResolvedHost, bool]]:

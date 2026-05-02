@@ -47,6 +47,7 @@ Socket path convention:
 from pathlib import Path
 
 import click
+from tabulate import tabulate as _tabulate
 
 from pf.ssh import (
     ResolvedHost,
@@ -57,11 +58,15 @@ from pf.ssh import (
     discover_sockets,
     ensure_sockets_dir,
     exec_command,
+    format_duration,
+    interactive_shell,
     is_master_alive,
     open_master,
     parse_ssh_config_blocks,
     parse_ssh_config_raw,
     resolve_host,
+    socket_clients,
+    socket_uptime,
 )
 
 
@@ -238,30 +243,55 @@ def info(pf: _PfContext, host: str | None, mode: str | None, named_host: str | N
         _print_sockets(pf, full=True)
 
 
+def _resolve_controlpersist(pf: _PfContext, config_name: str) -> str | None:
+    try:
+        return resolve_host(config_name, sockets_dir=pf.sockets_dir, config_path=pf.config_path).controlpersist
+    except Exception:
+        return None
+
+
+def _uptime_cell(resolved: ResolvedHost, alive: bool, controlpersist: str | None) -> str:
+    uptime = socket_uptime(resolved)
+    if not alive or uptime is None:
+        return ""
+    up = format_duration(uptime)
+    if controlpersist:
+        return f"{up} / {controlpersist} persist"
+    return up
+
+
 def _print_sockets(pf: _PfContext, full: bool):
     sockets = discover_sockets(pf.sockets_dir)
     if not sockets:
         click.echo("No sockets found.")
         return
 
-    stale = False
+    has_stale = False
+    rows: list[list[str]] = []
     for resolved, alive in sockets:
         status = click.style("alive", fg="green") if alive else click.style("stale", fg="red")
         if not alive:
-            stale = True
-        if full:
-            click.echo(f"  Host:    {resolved.config_name}")
-            click.echo(f"  User:    {resolved.user}")
-            click.echo(f"  Port:    {resolved.port}")
-            click.echo(f"  Socket:  {resolved.socket_path}")
-            click.echo(f"  Status:  {status}")
-            click.echo()
-        else:
-            click.echo(f"  {resolved.config_name:30s} {status}")
+            has_stale = True
+        cp = _resolve_controlpersist(pf, resolved.config_name)
+        uptime_str = _uptime_cell(resolved, alive, cp)
+        clients = socket_clients(resolved) if alive else None
+        clients_str = str(clients) if clients is not None else ""
 
-    if stale:
-        if not full:
-            click.echo()
+        if full:
+            row = [resolved.config_name, resolved.user, resolved.port, status, uptime_str, clients_str, str(resolved.socket_path)]
+        else:
+            row = [resolved.config_name, status, uptime_str, clients_str]
+        rows.append(row)
+
+    if full:
+        headers = ["Host", "User", "Port", "Status", "Uptime", "Clients", "Socket"]
+    else:
+        headers = ["Host", "Status", "Uptime", "Clients"]
+
+    click.echo(_tabulate(rows, headers=headers, tablefmt="plain"))
+
+    if has_stale:
+        click.echo()
         click.secho("Stale sockets detected. Clean up with:", fg="yellow")
         click.echo("  pf reap")
 
@@ -273,12 +303,20 @@ def _print_info_host(pf: _PfContext, host: str):
 
     alive = is_master_alive(resolved)
     status = click.style("alive", fg="green") if alive else click.style("stale", fg="red")
-    click.echo(f"  Host:      {resolved.config_name}")
-    click.echo(f"  Hostname:  {resolved.hostname}")
-    click.echo(f"  User:      {resolved.user}")
-    click.echo(f"  Port:      {resolved.port}")
-    click.echo(f"  Socket:    {resolved.socket_path}")
-    click.echo(f"  Status:    {status}")
+    uptime = socket_uptime(resolved)
+    clients = socket_clients(resolved) if alive else None
+    click.echo(f"  Host:            {resolved.config_name}")
+    click.echo(f"  Hostname:        {resolved.hostname}")
+    click.echo(f"  User:            {resolved.user}")
+    click.echo(f"  Port:            {resolved.port}")
+    click.echo(f"  Socket:          {resolved.socket_path}")
+    click.echo(f"  Status:          {status}")
+    if alive and uptime is not None:
+        click.echo(f"  Uptime:          {format_duration(uptime)} (since socket was created)")
+    if resolved.controlpersist:
+        click.echo(f"  ControlPersist:  {resolved.controlpersist} (idle timeout, resets on each disconnect)")
+    if clients is not None:
+        click.echo(f"  Clients:         {clients}")
 
     if not alive:
         click.echo()
@@ -311,6 +349,26 @@ def exec_cmd(pf: _PfContext, host: str, remote_cmd: tuple[str, ...]):
     if result.stderr:
         click.echo(result.stderr, nl=False, err=True)
     raise SystemExit(result.returncode)
+
+
+@main.command("ssh")
+@click.argument("host")
+@click.argument("extra_args", nargs=-1, type=click.UNPROCESSED)
+@click.pass_obj
+def ssh_cmd(pf: _PfContext, host: str, extra_args: tuple[str, ...]):
+    """Open an interactive shell on HOST through the existing master socket."""
+    resolved = pf.require_alive(host)
+    interactive_shell(resolved, extra_ssh_args=list(extra_args) or None)
+
+
+@main.command("connect", hidden=True)
+@click.argument("host")
+@click.argument("extra_args", nargs=-1, type=click.UNPROCESSED)
+@click.pass_obj
+def connect_cmd(pf: _PfContext, host: str, extra_args: tuple[str, ...]):
+    """Alias for `pf ssh`."""
+    resolved = pf.require_alive(host)
+    interactive_shell(resolved, extra_ssh_args=list(extra_args) or None)
 
 
 @main.command()

@@ -9,6 +9,7 @@ description = "SSH ControlMaster socket manager"
 requires-python = ">=3.12"
 dependencies = [
   "click>=8.0",
+  "tabulate>=0.9",
 ]
 
 [project.scripts]
