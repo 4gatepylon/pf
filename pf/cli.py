@@ -361,7 +361,7 @@ def ssh_cmd(pf: _PfContext, host: str, extra_args: tuple[str, ...]):
     interactive_shell(resolved, extra_ssh_args=list(extra_args) or None)
 
 
-@main.command("connect", hidden=True)
+@main.command("connect")
 @click.argument("host")
 @click.argument("extra_args", nargs=-1, type=click.UNPROCESSED)
 @click.pass_obj
