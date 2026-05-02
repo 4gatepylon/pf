@@ -1,6 +1,6 @@
 # pf
 
-SSH ControlMaster socket manager. Authenticate once, connect instantly from every terminal pane, VS Code window, scp, and rsync.
+SSH ControlMaster socket manager. Authenticate once, connect instantly from every terminal pane, VS Code window, scp, and rsync. The only downside is that if you do a lot of IO, some of your connections might be slower since they share the same socket.
 
 NOTE: This is implemented entirely by Claude Code w/ Opus 4.7 thinking xhigh and only integration tested with minimal code review.
 
