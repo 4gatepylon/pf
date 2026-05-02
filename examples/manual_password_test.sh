@@ -1,4 +1,7 @@
 #!/usr/bin/env bash
+#
+# TODO(hadriano) this DOES NOT WORK
+#
 # Manual integration test: verify that pf socket bypass eliminates password prompts.
 #
 # This script starts a local sshd that requires PASSWORD authentication (not keys).
