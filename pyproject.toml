@@ -1,0 +1,18 @@
+[build-system]
+requires = ["hatchling"]
+build-backend = "hatchling.build"
+
+[project]
+name = "pf"
+version = "0.1.0"
+description = "SSH ControlMaster socket manager"
+requires-python = ">=3.12"
+dependencies = [
+  "click>=8.0",
+]
+
+[project.scripts]
+pf = "pf.cli:main"
+
+[tool.ruff]
+line-length = 150
