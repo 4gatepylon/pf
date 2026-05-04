@@ -104,3 +104,16 @@ ps aux | grep '[s]sh.*pf_sockets'
 ```
 
 If a socket file exists but the master process is dead (stale socket), `pf open` will auto-clean it. You can also run `pf reap` to remove all stale sockets without killing live ones.
+
+# FYI
+To make your experience easier, you should remember to set Control Master settings etc... up in your SSH config for the host. For example, mine looks like this:
+```
+Host align3
+    ProxyJump [URL to jump server like jump.my_company.com; only if you use jump server]
+    Hostname [actual host like align3.my_company.com]
+    User [actual user]
+    ... other settings (such as which key to use or kerberos credentials, etc...)
+    ControlPath ~/.ssh/pf_sockets/%r@%n-%p
+    ControlPersist 20h
+```
+Note that you need to set ControlPath for this to work properly via `ssh align3` (if you don't want to do `pf ssh align3`). ControlPersist doesn't matter so much if you are continually using the socket (otherwise it times out due to inactivity).
