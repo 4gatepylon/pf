@@ -117,3 +117,5 @@ Host align3
     ControlPersist 20h
 ```
 Note that you need to set ControlPath for this to work properly via `ssh align3` (if you don't want to do `pf ssh align3`). ControlPersist doesn't matter so much if you are continually using the socket (otherwise it times out due to inactivity).
+
+TODO(hadriano) add utilities to add this into the SSH config.
